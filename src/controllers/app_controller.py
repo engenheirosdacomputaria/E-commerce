@@ -11,6 +11,8 @@ from src.models.config_loader import ConfigLoader
 from src.models.mongo_manager import MongoManager
 from src.models.migration_service import MigrationService
 from src.models.query_service import QueryService
+from src.models.redis_manager import RedisManager
+from src.models.redis_service import RedisService
 from src.models.sqlite_manager import SQLiteManager
 from src.models.sqlite_repository import SQLiteRepository
 from src.views.menu_view import MenuView
@@ -23,9 +25,11 @@ class AppController:
         config_loader = ConfigLoader(self.project_root)
         sqlite_cfg = config_loader.load_sqlite_config()
         mongo_cfg = config_loader.load_mongodb_config()
+        redis_cfg = config_loader.load_redis_config()
 
         self.sqlite_cfg = sqlite_cfg
         self.mongo_cfg = mongo_cfg
+        self.redis_cfg = redis_cfg
 
         self.sqlite_manager = SQLiteManager(sqlite_cfg["db_path"])
         self.sqlite_repository = SQLiteRepository(self.sqlite_manager)
@@ -34,8 +38,15 @@ class AppController:
             database_name=mongo_cfg["database"],
             use_mongomock_on_failure=mongo_cfg["use_mongomock_on_failure"],
         )
+        self.redis_manager = RedisManager(
+            host=redis_cfg["host"],
+            port=redis_cfg["port"],
+            db=redis_cfg["db"],
+            use_fakeredis_on_failure=redis_cfg["use_fakeredis_on_failure"],
+        )
         self.migration_service = MigrationService(self.sqlite_repository, self.mongo_manager)
         self.query_service = QueryService(self.mongo_manager)
+        self.redis_service = RedisService(self.redis_manager, self.sqlite_repository)
         self.view = MenuView()
 
     def run(self) -> None:
@@ -60,6 +71,16 @@ class AppController:
                     self._run_example_queries()
                 elif option == "8":
                     self._show_config_paths()
+                elif option == "9":
+                    self._test_redis()
+                elif option == "10":
+                    self._consultar_produto()
+                elif option == "11":
+                    self._adicionar_ao_carrinho()
+                elif option == "12":
+                    self._ver_carrinho()
+                elif option == "13":
+                    self._ver_ranking()
                 elif option == "0":
                     self.view.show_message("Encerrando o sistema.")
                     break
@@ -139,3 +160,41 @@ class AppController:
         self.view.show_message(f"Mongo ini : {self.mongo_cfg['source_file']}")
         self.view.show_message(f"Mongo uri : {self.mongo_cfg['uri']}")
         self.view.show_message(f"Database  : {self.mongo_cfg['database']}")
+
+    def _test_redis(self) -> None:
+        ok, message = self.redis_manager.test_connection()
+        if ok:
+            self.view.show_success(message)
+            if self.redis_manager.using_mock:
+                self.view.show_message(
+                    "Observação: o sistema está usando fakeredis em memória."
+                )
+        else:
+            self.view.show_error(message)
+
+    def _consultar_produto(self) -> None:
+        produto_id = self.view.ask_int("ID do produto: ")
+        produto = self.redis_service.buscar_produto_com_cache(produto_id)
+        if produto is None:
+            self.view.show_error("Produto não encontrado.")
+        else:
+            self.view.show_produto(produto)
+
+    def _adicionar_ao_carrinho(self) -> None:
+        cliente_id = self.view.ask_int("ID do cliente: ")
+        produto_id = self.view.ask_int("ID do produto: ")
+        quantidade = self.view.ask_int("Quantidade: ")
+        ok, message = self.redis_service.adicionar_ao_carrinho(cliente_id, produto_id, quantidade)
+        if ok:
+            self.view.show_success(message)
+        else:
+            self.view.show_error(message)
+
+    def _ver_carrinho(self) -> None:
+        cliente_id = self.view.ask_int("ID do cliente: ")
+        itens = self.redis_service.ver_carrinho(cliente_id)
+        self.view.show_carrinho(itens)
+
+    def _ver_ranking(self) -> None:
+        ranking = self.redis_service.ver_ranking()
+        self.view.show_ranking(ranking)

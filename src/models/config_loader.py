@@ -29,3 +29,14 @@ class ConfigLoader:
             "use_mongomock_on_failure": parser.getboolean("mongodb", "use_mongomock_on_failure"),
             "source_file": str(self.project_root / "config" / "mongodb.ini"),
         }
+
+    def load_redis_config(self) -> dict:
+        parser = ConfigParser()
+        parser.read(self.project_root / "config" / "redis.ini", encoding="utf-8")
+        return {
+            "host": parser.get("redis", "host"),
+            "port": parser.getint("redis", "port"),
+            "db": parser.getint("redis", "db"),
+            "use_fakeredis_on_failure": parser.getboolean("redis", "use_fakeredis_on_failure"),
+            "source_file": str(self.project_root / "config" / "redis.ini"),
+        }

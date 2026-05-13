@@ -25,11 +25,24 @@ class MenuView:
         print("6. Mostrar amostra de documentos")
         print("7. Executar consultas de exemplo")
         print("8. Mostrar caminhos de configuração carregados")
+        print("--- Redis ---")
+        print("9.  Testar configuração do Redis")
+        print("10. Consultar produto por ID (cache-aside)")
+        print("11. Adicionar produto ao carrinho")
+        print("12. Visualizar carrinho")
+        print("13. Exibir ranking de produtos mais consultados")
         print("0. Sair")
         print("=" * 72)
 
     def ask_option(self) -> str:
         return input("Escolha uma opção: ").strip()
+
+    def ask_int(self, prompt: str) -> int:
+        while True:
+            try:
+                return int(input(prompt).strip())
+            except ValueError:
+                print("[ERRO] Digite um número inteiro válido.")
 
     def show_message(self, message: str) -> None:
         print(message)
@@ -48,3 +61,37 @@ class MenuView:
             found = True
         if not found:
             print("Nenhum documento encontrado.")
+
+    def show_produto(self, produto: dict) -> None:
+        print("\n=== Produto ===")
+        print(f"  ID      : {produto['id_produto']}")
+        print(f"  Nome    : {produto['nome']}")
+        print(f"  Preço   : R$ {produto['preco_atual']:.2f}")
+        print(f"  Estoque : {produto['estoque_total']}")
+
+    def show_carrinho(self, itens: list[dict]) -> None:
+        print("\n=== Carrinho ===")
+        if not itens:
+            print("  Carrinho vazio.")
+            return
+        total = 0.0
+        for item in itens:
+            print(
+                f"  {item['nome']} | "
+                f"R$ {item['preco_unitario']:.2f} x {item['quantidade']} = "
+                f"R$ {item['subtotal']:.2f}"
+            )
+            total += item["subtotal"]
+        print(f"  Total: R$ {total:.2f}")
+
+    def show_ranking(self, ranking: list[dict]) -> None:
+        print("\n=== Ranking de Produtos Mais Consultados ===")
+        if not ranking:
+            print("  Nenhuma consulta registrada ainda.")
+            return
+        for i, item in enumerate(ranking, start=1):
+            print(
+                f"  {i}. {item['nome']} | "
+                f"R$ {item['preco_atual']:.2f} | "
+                f"Consultas: {item['total_consultas']}"
+            )

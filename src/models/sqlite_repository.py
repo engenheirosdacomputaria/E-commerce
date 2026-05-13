@@ -196,3 +196,33 @@ class SQLiteRepository:
             )
             pedidos.append(pedido)
         return pedidos
+
+    def find_produto_by_id(self, produto_id: int) -> dict | None:
+        """Busca pontual de produto por ID com JOIN na tabela estoque.
+
+        Retorna um dicionário simples para uso no RedisService,
+        ou None se o produto não existir.
+        """
+        row = self.sqlite.query_one(
+            """
+            SELECT
+                p.id_produto,
+                p.nome,
+                p.preco_atual,
+                COALESCE(e.quantidade_disponivel, 0) AS estoque_total
+            FROM produto p
+            LEFT JOIN estoque e ON e.id_produto = p.id_produto
+            WHERE p.id_produto = ?
+            """,
+            (produto_id,),
+        )
+
+        if row is None:
+            return None
+
+        return {
+            "id_produto": int(row["id_produto"]),
+            "nome": row["nome"],
+            "preco_atual": float(row["preco_atual"]),
+            "estoque_total": int(row["estoque_total"]),
+        }
