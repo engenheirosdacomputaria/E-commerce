@@ -1,177 +1,219 @@
-# Ecommerce
-Projeto da matéria de banco de dados não relacionais
+# Ecommerce: SQLite + MongoDB + Redis
 
-# Especificação de Mudança — Redis
-**Banco de Dados Não Relacionais | Projeto base com Redis**
+Projeto da disciplina de **Banco de Dados Não Relacionais**.
 
----
-
-## 4.1 Identificação
-
-**Grupo:**
-**Integrantes:**
+Backend simplificado de e-commerce com arquitetura MVC, integrando três bancos de dados com papéis distintos: **SQLite** como fonte relacional persistente, **MongoDB** como banco documental e **Redis** como camada de apoio para cache, estado temporário e ranking em tempo real.
 
 ---
 
-## 4.2 Análise das Demandas
+## Estrutura do Projeto
 
-### Demanda 1 — Consulta rápida de produtos
-**Problema resolvido:** Toda consulta de produto por ID acessa o SQLite diretamente. Quando o mesmo produto é consultado várias vezes seguidas, o banco relacional é acionado de forma desnecessária. O Redis entra como cache intermediário para absorver essas leituras repetidas, reduzindo a carga sobre o SQLite.
-
-### Demanda 2 — Carrinho temporário de compras
-**Problema resolvido:** Antes de finalizar um pedido, o cliente monta uma seleção de produtos e quantidades. Esse estado não deve ser persistido no banco principal enquanto o pedido não é confirmado. O Redis oferece uma estrutura leve e temporária para guardar esse carrinho de forma isolada por cliente.
-
-### Demanda 3 — Produtos mais consultados
-**Problema resolvido:** O sistema não registra quais produtos são mais acessados. Sem esse dado, o gestor não consegue identificar o interesse dos clientes. O Redis permite acumular e ordenar contagens de consulta em tempo real, sem custo de escrita no banco principal.
-
----
-
-## 4.3 Técnica Redis Escolhida
-
-### Demanda 1 — Cache com String JSON + TTL
-**Técnica:** String com JSON + TTL (`SETEX` / `GET`)
-
-**Justificativa:** O produto é um objeto com poucos campos (nome, preço, estoque). Serializar em JSON e armazenar em uma String é simples e eficiente. O TTL garante que dados desatualizados expirem automaticamente, sem necessidade de invalidação manual em cenários básicos. Essa é a técnica clássica de cache-aside, já demonstrada na PoC do professor.
-
-### Demanda 2 — Carrinho com Hash + TTL
-**Técnica:** Hash (`HSET` / `HGETALL`) + TTL (`EXPIRE`)
-
-**Justificativa:** O carrinho é um conjunto de pares `id_produto → quantidade` associados a um cliente. O Hash do Redis representa exatamente essa estrutura: cada campo do Hash é um produto, e o valor é a quantidade. Permite adicionar, consultar e remover itens individualmente sem reescrever o carrinho inteiro. O TTL descarta carrinhos abandonados automaticamente.
-
-### Demanda 3 — Ranking com Sorted Set
-**Técnica:** Sorted Set (`ZINCRBY` / `ZREVRANGE`)
-
-**Justificativa:** O Sorted Set mantém elementos ordenados por pontuação de forma nativa. Cada produto é um membro; cada consulta incrementa sua pontuação. A consulta do ranking já vem ordenada do maior para o menor sem necessidade de ordenação na aplicação. É a estrutura ideal para rankings em tempo real.
-
----
-
-## 4.4 Padrão das Chaves Redis
-
-### Demanda 1
-
-| Chave | `dev:ecommerce:produto:cache:{id_produto}` |
-|---|---|
-| **Representa** | Cache dos dados de um produto específico |
-| **Dado armazenado** | JSON com `id_produto`, `nome`, `preco_atual`, `estoque_total` |
-| **TTL** | Sim — 60 segundos |
-
-Exemplo: `dev:ecommerce:produto:cache:3`
+```
+Ecommerce/
+├── config/
+│   ├── sqlite.ini
+│   ├── mongodb.ini
+│   └── redis.ini
+├── data/
+│   └── ecommerce.db
+├── src/
+│   ├── controllers/
+│   │   └── app_controller.py
+│   ├── models/
+│   │   ├── config_loader.py
+│   │   ├── domain.py
+│   │   ├── mappers.py
+│   │   ├── migration_service.py
+│   │   ├── mongo_manager.py
+│   │   ├── mongo_schemas.py
+│   │   ├── query_service.py
+│   │   ├── redis_manager.py
+│   │   ├── redis_service.py
+│   │   ├── sqlite_manager.py
+│   │   └── sqlite_repository.py
+│   └── views/
+│       └── menu_view.py
+├── docker-compose.yml
+├── main.py
+└── requirements.txt
+```
 
 ---
 
-### Demanda 2
+## Arquitetura
 
-| Chave | `dev:ecommerce:carrinho:cliente:{id_cliente}` |
+| Banco | Papel |
 |---|---|
-| **Representa** | Carrinho temporário de um cliente |
-| **Dado armazenado** | Hash com campos `produto:{id_produto}` e valor `quantidade` |
-| **TTL** | Sim — 900 segundos (15 minutos) |
-
-Exemplo: `dev:ecommerce:carrinho:cliente:5`
-Campos do Hash: `produto:2 → 1`, `produto:7 → 3`
+| **SQLite** | Fonte persistente e confiável de todos os dados (produtos, pedidos, clientes) |
+| **MongoDB** | Modelo documental achatado para consultas analíticas e de leitura |
+| **Redis** | Cache de produtos, carrinho temporário e ranking de consultas em tempo real |
 
 ---
 
-### Demanda 3
+## Instalação
 
-| Chave | `dev:ecommerce:ranking:produtos:consultas` |
+### Pré-requisitos
+
+- Python 3.11+
+- Docker e Docker Compose
+
+### 1. Clone o repositório
+
+```bash
+git clone https://github.com/seu-usuario/ecommerce.git
+cd ecommerce
+```
+
+### 2. Crie e ative o ambiente virtual
+
+```bash
+python -m venv .venv
+```
+
+Windows PowerShell:
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Linux / macOS:
+```bash
+source .venv/bin/activate
+```
+
+### 3. Instale as dependências
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Suba os containers
+
+```bash
+docker compose up -d
+```
+
+Serviços disponíveis após subir:
+
+| Serviço | URL |
 |---|---|
-| **Representa** | Ranking global de produtos mais consultados |
-| **Dado armazenado** | Sorted Set com membros `produto:{id_produto}` e score = total de consultas |
-| **TTL** | Não — estrutura permanente enquanto o sistema estiver em uso |
+| MongoDB | `mongodb://root:example@localhost:27017` |
+| Mongo Express | http://localhost:8081 |
+| Redis | `localhost:6379` |
+| RedisInsight | http://localhost:5540 |
+
+### 5. Execute a aplicação
+
+```bash
+python main.py
+```
 
 ---
 
-## 4.5 Relação entre Redis e SQL
+## Menu do Sistema
 
-### Demanda 1 — Consulta rápida de produtos
-
-| Aspecto | Detalhe |
-|---|---|
-| **Dados do SQL** | `nome`, `preco_atual`, `estoque_total`, `id_produto` (tabelas `produto` e `estoque`) |
-| **Dados no Redis** | JSON com os mesmos campos, em cache temporário |
-| **Papel do Redis** | Cache de leitura (cache-aside) |
-
-O SQLite é sempre a fonte confiável. O Redis é consultado primeiro; se não houver dado (`CACHE MISS`), o SQLite é acessado e o resultado é salvo no Redis.
-
-### Demanda 2 — Carrinho temporário
-
-| Aspecto | Detalhe |
-|---|---|
-| **Dados do SQL** | Verificação de existência do produto e disponibilidade de estoque (tabelas `produto` e `estoque`) |
-| **Dados no Redis** | Apenas `id_produto` e `quantidade` por item do carrinho |
-| **Papel do Redis** | Armazenamento temporário de estado |
-
-O Redis não armazena nome nem preço no carrinho. Esses dados são buscados no SQLite apenas na hora de exibir o carrinho ao cliente (nome, preço, subtotal são calculados na hora da leitura).
-
-### Demanda 3 — Produtos mais consultados
-
-| Aspecto | Detalhe |
-|---|---|
-| **Dados do SQL** | `nome` e `preco_atual` do produto (consultados na hora de exibir o ranking) |
-| **Dados no Redis** | Sorted Set com `id_produto` e contagem de consultas como score |
-| **Papel do Redis** | Estrutura de apoio para contagem e ordenação em tempo real |
-
-O SQLite não registra contagens de consulta. O Redis assume esse papel exclusivamente. Na exibição do ranking, os IDs dos produtos são recuperados do Sorted Set e os detalhes (nome, preço) são buscados no SQLite.
+```
+1.  Testar configuração do SQLite
+2.  Recriar e popular SQLite
+3.  Testar configuração do MongoDB
+4.  Recriar coleções Mongo com schema
+5.  Migrar SQLite -> Mongo
+6.  Mostrar amostra de documentos
+7.  Executar consultas de exemplo
+8.  Mostrar caminhos de configuração
+--- Redis ---
+9.  Testar configuração do Redis
+10. Consultar produto por ID (cache-aside)
+11. Adicionar produto ao carrinho
+12. Visualizar carrinho
+13. Exibir ranking de produtos mais consultados
+0.  Sair
+```
 
 ---
 
-## 4.6 Mudanças no Projeto Base
+## Demandas Redis Implementadas
 
-| Parte do projeto | Alteração prevista |
-|---|---|
-| `docker-compose.yml` | Adicionar serviço `redis` (imagem `redis:7-alpine`) e serviço `redisinsight` para visualização |
-| `requirements.txt` | Adicionar `redis>=5.0,<6.0` e `fakeredis>=2.0,<3.0` |
-| Menu/Terminal | Adicionar novas opções: consultar produto por ID, gerenciar carrinho (adicionar item, ver carrinho), exibir ranking de produtos |
-| Controller (`app_controller.py`) | Adicionar métodos para despachar as três novas operações Redis, instanciar `RedisManager` e `RedisService` |
-| Service | Criar `redis_service.py` com a lógica de negócio das três demandas: cache de produto, operações de carrinho e atualização/leitura do ranking |
-| Repository/SQL | Criar método `find_produto_by_id(id)` no `SQLiteRepository` para busca pontual de produto com estoque |
-| Configuração Redis | Criar `config/redis.ini` com host, porta, db e modo mock; criar `redis_manager.py` responsável pela conexão (real ou fakeredis) |
+### Demanda 1 — Cache-aside de Produtos
 
----
+Evita consultas repetidas ao SQLite armazenando os dados do produto em Redis com TTL de 60 segundos.
 
-## 4.7 Plano de Implementação
+```
+Chave: dev:ecommerce:produto:cache:{id_produto}
+Tipo:  String com JSON
+TTL:   60 segundos
+```
 
-1. **Configuração do ambiente** — adicionar Redis e RedisInsight ao `docker-compose.yml`; criar `config/redis.ini`; atualizar `requirements.txt`
-2. **Criar `RedisManager`** — classe responsável pela conexão com Redis real ou fakeredis, seguindo o mesmo padrão do `MongoManager` já existente
-3. **Criar `RedisService`** — implementar as três demandas como métodos separados:
-   - `buscar_produto_com_cache(produto_id)` — Demanda 1
-   - `adicionar_ao_carrinho(cliente_id, produto_id, quantidade)` e `ver_carrinho(cliente_id)` — Demanda 2
-   - `registrar_consulta(produto_id)` e `ver_ranking()` — Demanda 3
-4. **Atualizar `SQLiteRepository`** — adicionar `find_produto_by_id(id)` para busca pontual de produto com estoque
-5. **Atualizar `AppController`** — instanciar `RedisManager` e `RedisService`; criar métodos `_consultar_produto`, `_gerenciar_carrinho`, `_ver_ranking`
-6. **Atualizar `MenuView`** — adicionar as novas opções ao menu e métodos de exibição para carrinho e ranking
-7. **Testes pelo terminal** — verificar cada demanda conforme os critérios de aceite e validar chaves no RedisInsight
+Fluxo:
+1. Busca no Redis → **CACHE HIT**: retorna imediatamente
+2. **CACHE MISS**: busca no SQLite, salva no Redis com TTL e retorna
 
 ---
 
-## 4.8 Testes Previstos
+### Demanda 2 — Carrinho Temporário de Compras
 
-### Demanda 1 — Cache de produto
+Armazena o carrinho do cliente no Redis como Hash, com validação de estoque no SQLite antes de adicionar.
 
-| Teste | Resultado esperado |
-|---|---|
-| Consultar produto com ID existente (ex: ID 1) | Sistema retorna nome, preço e estoque |
-| Consultar o mesmo produto uma segunda vez | Log indica `CACHE HIT`; SQLite não é acessado |
-| Consultar produto com ID inexistente | Mensagem "produto não encontrado" |
-| Verificar no RedisInsight | Chave `dev:ecommerce:produto:cache:1` aparece com TTL ativo |
-| Aguardar 60 segundos e consultar novamente | `CACHE MISS`; SQLite é acessado; chave é recriada |
+```
+Chave: dev:ecommerce:carrinho:cliente:{id_cliente}
+Tipo:  Hash  →  produto:{id} : quantidade
+TTL:   900 segundos (15 minutos)
+```
 
-### Demanda 2 — Carrinho temporário
+Validações aplicadas:
+- Produto deve existir no SQLite
+- Estoque deve ser suficiente para a quantidade solicitada
 
-| Teste | Resultado esperado |
-|---|---|
-| Adicionar produto existente com estoque suficiente | Item adicionado; Hash criado no Redis |
-| Tentar adicionar produto inexistente | Mensagem de erro; Redis não é alterado |
-| Tentar adicionar quantidade maior que o estoque | Mensagem de erro; Redis não é alterado |
-| Visualizar carrinho | Nome do produto, preço unitário, quantidade e subtotal exibidos corretamente |
-| Verificar no RedisInsight | Hash com campos `produto:{id}` e TTL de 900 segundos |
+---
 
-### Demanda 3 — Ranking de consultas
+### Demanda 3 — Ranking de Produtos Mais Consultados
 
-| Teste | Resultado esperado |
-|---|---|
-| Consultar o mesmo produto várias vezes | Score do produto incrementa a cada consulta |
-| Consultar produto inexistente | Score não é incrementado |
-| Exibir ranking | Lista ordenada do mais consultado para o menos, com nome, preço e total de consultas |
-| Verificar no RedisInsight | Sorted Set `dev:ecommerce:ranking:produtos:consultas` com membros e scores corretos |
+Registra automaticamente cada consulta a um produto existente e mantém um ranking ordenado por pontuação.
+
+```
+Chave: dev:ecommerce:ranking:produtos:consultas
+Tipo:  Sorted Set  →  produto:{id} : score (total de consultas)
+TTL:   Sem expiração
+```
+
+---
+
+## Padrão de Chaves Redis
+
+Todas as chaves seguem o padrão:
+
+```
+ambiente : aplicacao : dominio : finalidade : {identificador}
+dev      : ecommerce : produto : cache      : 1
+dev      : ecommerce : carrinho: cliente    : 10
+dev      : ecommerce : ranking : produtos   : consultas
+```
+
+O prefixo `dev:ecommerce` evita colisão com outras aplicações no mesmo servidor Redis e facilita a inspeção no RedisInsight.
+
+---
+
+## Inspecionando com RedisInsight
+
+Acesse http://localhost:5540 e conecte usando:
+
+```
+Host: redis
+Port: 6379
+```
+
+---
+
+## Modo sem Docker
+
+Se o Redis ou o MongoDB não estiverem disponíveis, o sistema cai automaticamente para modo mock em memória:
+
+- **fakeredis** substitui o Redis real
+- **mongomock** substitui o MongoDB real
+
+Nesse modo tudo funciona normalmente, mas os dados são perdidos ao encerrar o programa.
+
+---
+
+## 👥 Grupo
+
+BDNRelacional 2 — Edson Ristow, Eduardo Paes, Giovanna Gonçalves e Rodrigo Rodrigues
