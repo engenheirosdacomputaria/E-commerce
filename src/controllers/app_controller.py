@@ -14,7 +14,8 @@ from src.models.query_service import QueryService
 from src.models.sqlite_manager import SQLiteManager
 from src.models.sqlite_repository import SQLiteRepository
 from src.views.menu_view import MenuView
-
+from src.models.redis_manager import RedisManager
+from src.models.redis_service import RedisService
 
 class AppController:
     def __init__(self) -> None:
@@ -37,6 +38,8 @@ class AppController:
         self.migration_service = MigrationService(self.sqlite_repository, self.mongo_manager)
         self.query_service = QueryService(self.mongo_manager)
         self.view = MenuView()
+        self.redis_manager = RedisManager() 
+        self.redis_service = RedisService(self.redis_manager, self.sqlite_repository)
 
     def run(self) -> None:
         while True:
@@ -60,6 +63,14 @@ class AppController:
                     self._run_example_queries()
                 elif option == "8":
                     self._show_config_paths()
+                elif option == "9":
+                    self._consultar_produto_redis()
+                elif option == "10":
+                    self._gerenciar_carrinho()
+                elif option == "11":
+                    self._visualizar_carrinho()
+                elif option == "12":
+                    self._ver_ranking()
                 elif option == "0":
                     self.view.show_message("Encerrando o sistema.")
                     break
@@ -67,6 +78,42 @@ class AppController:
                     self.view.show_error("Opção inválida.")
             except Exception as exc:
                 self.view.show_error(str(exc))
+
+    def _consultar_produto_redis(self):
+        prod_id = input("Digite o ID do produto: ")
+        produto = self.redis_service.buscar_produto_com_cache(prod_id)
+        if produto:
+            print(f"Produto Encontrado: {produto['nome']} | Preço: R${produto['preco_atual']} | Estoque: {produto['estoque_total']}")
+        else:
+            print("Produto não encontrado.")
+
+    def _gerenciar_carrinho(self):
+        cliente_id = input("ID do Cliente: ")
+        produto_id = input("ID do Produto: ")
+        qtd = int(input("Quantidade: "))
+        sucesso, msg = self.redis_service.adicionar_ao_carrinho(cliente_id, produto_id, qtd)
+        print(msg)
+
+    def _visualizar_carrinho(self):
+        cliente_id = input("ID do Cliente: ")
+        itens, total = self.redis_service.ver_carrinho(cliente_id)
+        print(f"\n--- Carrinho do Cliente {cliente_id} ---")
+        if not itens:
+            print("Carrinho vazio ou expirado.")
+        else:
+            for item in itens:
+                print(f"- {item['nome']} (Qtd: {item['quantidade']}) -> Subtotal: R${item['subtotal']:.2f}")
+            print(f"TOTAL: R${total:.2f}")
+        print("-----------------------------------")
+
+    def _ver_ranking(self):
+        ranking = self.redis_service.ver_ranking()
+        print("\n--- Ranking de Consultas ---")
+        if not ranking:
+            print("Nenhuma consulta registrada ainda.")
+        else:
+            for i, p in enumerate(ranking, 1):
+                print(f"{i}º | {p['nome']} (R${p['preco']}) - {p['total_consultas']} consultas")
 
     def _test_sqlite(self) -> None:
         ok, message = self.sqlite_manager.test_connection()

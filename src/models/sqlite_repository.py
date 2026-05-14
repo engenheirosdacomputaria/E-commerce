@@ -196,3 +196,25 @@ class SQLiteRepository:
             )
             pedidos.append(pedido)
         return pedidos
+    
+    def find_produto_by_id(self, produto_id):
+            query = """
+                SELECT 
+                    p.id_produto as id, 
+                    p.nome, 
+                    p.preco_atual, 
+                    COALESCE(e.quantidade_disponivel, 0) as estoque_total
+                FROM produto p
+                LEFT JOIN estoque e ON p.id_produto = e.id_produto
+                WHERE p.id_produto = ?
+            """
+            row = self.sqlite.query_one(query, (produto_id,))
+            
+            if row:
+                return {
+                    "id": row["id"],
+                    "nome": row["nome"],
+                    "preco_atual": row["preco_atual"],
+                    "estoque_total": row["estoque_total"]
+                }
+            return None

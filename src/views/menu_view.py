@@ -25,6 +25,10 @@ class MenuView:
         print("6. Mostrar amostra de documentos")
         print("7. Executar consultas de exemplo")
         print("8. Mostrar caminhos de configuração carregados")
+        print("9. REDIS Consultar produto por ID (Cache)")
+        print("10. REDIS Adicionar item ao carrinho temporário")
+        print("11. REDIS Visualizar carrinho de um cliente")
+        print("12. REDIS Eexibir ranking de produtos mais consultados")
         print("0. Sair")
         print("=" * 72)
 
