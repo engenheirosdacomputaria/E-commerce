@@ -6,7 +6,8 @@ Responsável por coordenar View e Model.
 from __future__ import annotations
 
 from pathlib import Path
-
+from src.models.redis_manager import RedisManager
+from src.models.redis_service import RedisService
 from src.models.config_loader import ConfigLoader
 from src.models.mongo_manager import MongoManager
 from src.models.migration_service import MigrationService
@@ -36,6 +37,10 @@ class AppController:
         )
         self.migration_service = MigrationService(self.sqlite_repository, self.mongo_manager)
         self.query_service = QueryService(self.mongo_manager)
+        # Inicializando Redis
+        self.redis_manager = RedisManager(host='localhost', port=6379)
+        self.redis_service = RedisService(self.redis_manager.client, self.sqlite_repository)
+        
         self.view = MenuView()
 
     def run(self) -> None:
@@ -60,6 +65,12 @@ class AppController:
                     self._run_example_queries()
                 elif option == "8":
                     self._show_config_paths()
+                elif option == "9":
+                    self._test_redis_cache()
+                elif option == "10":
+                    self._test_redis_cart()
+                elif option == "11":
+                    self._test_redis_ranking()
                 elif option == "0":
                     self.view.show_message("Encerrando o sistema.")
                     break
@@ -67,7 +78,48 @@ class AppController:
                     self.view.show_error("Opção inválida.")
             except Exception as exc:
                 self.view.show_error(str(exc))
+    # --- Novos Métodos Privados para o Redis ---
+    def _test_redis_cache(self) -> None:
+        ok, msg = self.redis_manager.test_connection()
+        if not ok:
+            self.view.show_error(msg)
+            return
 
+        self.view.show_message("Digite o ID do produto para consulta:")
+        prod_id = int(self.view.ask_option())
+        status, produto = self.redis_service.consultar_produto(prod_id)
+        
+        if produto:
+            self.view.show_success(f"Consulta finalizada. Status: CACHE {status}")
+            self.view.show_documents(f"Produto {prod_id}", [produto])
+        else:
+            self.view.show_error("Produto não encontrado no SQLite nem no Redis.")
+
+    def _test_redis_cart(self) -> None:
+        self.view.show_message("Digite o ID do Cliente:")
+        cliente_id = int(self.view.ask_option())
+        
+        self.view.show_message("Digite o ID do Produto para adicionar:")
+        produto_id = int(self.view.ask_option())
+        
+        self.view.show_message("Digite a Quantidade:")
+        qtd = int(self.view.ask_option())
+        
+        self.redis_service.adicionar_ao_carrinho(cliente_id, produto_id, qtd)
+        self.view.show_success(f"Produto {produto_id} adicionado ao carrinho com TTL de 900s.")
+        
+        carrinho = self.redis_service.visualizar_carrinho(cliente_id)
+        self.view.show_message(f"Status do Carrinho do Cliente {cliente_id}: {carrinho}")
+
+    def _test_redis_ranking(self) -> None:
+        ranking = self.redis_service.obter_ranking()
+        if not ranking:
+            self.view.show_message("O ranking está vazio. Consulte produtos primeiro.")
+            return
+            
+        print("\n=== Ranking de Consultas ===")
+        for idx, (produto_id, acessos) in enumerate(ranking, start=1):
+            print(f"{idx}º Lugar -> Produto ID: {produto_id} | Consultas: {int(acessos)}")
     def _test_sqlite(self) -> None:
         ok, message = self.sqlite_manager.test_connection()
         if ok:

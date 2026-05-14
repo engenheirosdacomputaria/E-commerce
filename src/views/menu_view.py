@@ -13,9 +13,10 @@ from typing import Iterable, Any
 
 
 class MenuView:
+# Modifique o método show_menu na classe MenuView:
     def show_menu(self) -> None:
         print("\n" + "=" * 72)
-        print(" Laboratório de migração — SQLite + MongoDB + MVC + domínio")
+        print(" Laboratório de migração — SQLite + MongoDB + Redis + MVC")
         print("=" * 72)
         print("1. Testar configuração do SQLite")
         print("2. Recriar e popular SQLite")
@@ -25,6 +26,9 @@ class MenuView:
         print("6. Mostrar amostra de documentos")
         print("7. Executar consultas de exemplo")
         print("8. Mostrar caminhos de configuração carregados")
+        print("9. [REDIS] Testar Cache de Produtos (Demanda 1)")
+        print("10. [REDIS] Testar Carrinho Temporário (Demanda 2)")
+        print("11. [REDIS] Ranking de Produtos Mais Consultados (Demanda 3)")
         print("0. Sair")
         print("=" * 72)
 
